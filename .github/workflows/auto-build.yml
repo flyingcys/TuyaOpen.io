@@ -1,0 +1,59 @@
+name: CI (Build Docusaurus)
+
+on:
+  pull_request:
+    branches: [ master ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+  push:
+    branches: [ master ]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # 对草稿 PR 跳过（除非事件为 push）
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Build (npm run build)
+        env:
+          CI: true
+          NODE_OPTIONS: --max_old_space_size=4096
+        run: npm run build
+
+      - name: Smoke test dev server (npm start)
+        shell: bash
+        env:
+          CI: true
+        run: |
+          set -euo pipefail
+          PORT=3000
+          echo "Starting dev server on port ${PORT}..."
+          npm start -- --no-open --port ${PORT} >/tmp/docusaurus.log 2>&1 &
+          SERVER_PID=$!
+          echo "Dev server PID: ${SERVER_PID}"
+          cleanup() { echo "Stopping dev server ${SERVER_PID}"; kill ${SERVER_PID} 2>/dev/null || true; wait ${SERVER_PID} 2>/dev/null || true; }
+          trap cleanup EXIT
+          npx --yes wait-on@7 http://127.0.0.1:${PORT}
+          curl -sSf http://127.0.0.1:${PORT} > /dev/null
+          echo "Dev server responded successfully."
+
+
