@@ -28,18 +28,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
-          cache: 'npm'
+          cache: 'pnpm'
 
-      - name: Install dependencies (npm ci)
-        run: npm ci
+      - name: Enable corepack and activate pnpm from packageManager
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.2.0 --activate
 
-      - name: Build (npm run build)
+      - name: Install dependencies (pnpm install)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (pnpm run build)
         env:
           CI: true
           NODE_OPTIONS: --max_old_space_size=4096
-        run: npm run build
+        run: pnpm run build
 
-      - name: Smoke test dev server (npm start)
+      - name: Smoke test dev server (pnpm start)
         shell: bash
         env:
           CI: true
@@ -47,12 +52,12 @@ jobs:
           set -euo pipefail
           PORT=3000
           echo "Starting dev server on port ${PORT}..."
-          npm start -- --no-open --port ${PORT} >/tmp/docusaurus.log 2>&1 &
+          pnpm start -- --no-open --port ${PORT} >/tmp/docusaurus.log 2>&1 &
           SERVER_PID=$!
           echo "Dev server PID: ${SERVER_PID}"
           cleanup() { echo "Stopping dev server ${SERVER_PID}"; kill ${SERVER_PID} 2>/dev/null || true; wait ${SERVER_PID} 2>/dev/null || true; }
           trap cleanup EXIT
-          npx --yes wait-on@7 http://127.0.0.1:${PORT}
+          pnpm dlx wait-on@7 http://127.0.0.1:${PORT}
           curl -sSf http://127.0.0.1:${PORT} > /dev/null
           echo "Dev server responded successfully."
 
